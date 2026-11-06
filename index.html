@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Closet Collection | 洋服コレクション管理</title>
+<meta name="description" content="持っている洋服を写真でコレクション管理。ブランド・価格・購入場所まで記録できる、服好きのためのクローゼットアプリ。">
+<meta name="theme-color" content="#111111">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+  :root{
+    --bg:#0f0f10; --panel:#1a1a1c; --panel2:#232326; --line:#333338;
+    --text:#f2f2f3; --sub:#a7a7ad; --accent:#e8c872; --danger:#e5534b;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;padding-bottom:96px}
+  header{position:sticky;top:0;z-index:20;background:rgba(15,15,16,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:14px 16px 10px}
+  h1{font-size:19px;margin:0;letter-spacing:.04em}
+  h1 small{display:block;font-size:11px;color:var(--sub);font-weight:400;margin-top:2px;letter-spacing:.08em}
+  .stats{display:flex;gap:16px;margin-top:10px;font-size:13px;color:var(--sub)}
+  .stats b{color:var(--text);font-size:16px}
+  .stats .gold b{color:var(--accent)}
+  .controls{padding:12px 16px 4px;display:flex;flex-direction:column;gap:8px}
+  .controls input[type=search], .controls select{
+    width:100%;background:var(--panel);border:1px solid var(--line);color:var(--text);
+    border-radius:10px;padding:10px 12px;font-size:15px;appearance:none}
+  .row{display:flex;gap:8px}
+  .row>*{flex:1}
+  .checkline{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--sub);padding:2px 2px 0}
+  main{padding:10px 12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;cursor:pointer;text-align:left;padding:0;color:inherit;width:100%}
+  .card img{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:var(--panel2)}
+  .card .meta{padding:8px 10px 10px}
+  .card .brand{font-size:11px;color:var(--accent);letter-spacing:.06em;text-transform:uppercase}
+  .card .name{font-size:14px;margin-top:2px;line-height:1.35;min-height:2.6em}
+  .card .price{font-size:13px;color:var(--sub);margin-top:2px}
+  .badge{display:inline-block;font-size:10px;background:var(--accent);color:#111;border-radius:999px;padding:2px 8px;margin-top:6px;font-weight:700}
+  .empty{color:var(--sub);text-align:center;padding:48px 16px;font-size:14px;line-height:1.8}
+  #addBtn{position:fixed;right:16px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:30;
+    background:var(--accent);color:#111;border:none;border-radius:999px;padding:14px 22px;
+    font-size:16px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.5);cursor:pointer}
+  dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:16px;
+    width:min(94vw,520px);max-height:92vh;overflow:auto;padding:0}
+  dialog::backdrop{background:rgba(0,0,0,.7)}
+  .sheet{padding:18px}
+  .sheet h2{font-size:17px;margin:0 0 12px}
+  .sheet label{display:block;font-size:12px;color:var(--sub);margin:12px 0 4px}
+  .sheet input,.sheet select,.sheet textarea{width:100%;background:var(--panel2);border:1px solid var(--line);
+    color:var(--text);border-radius:10px;padding:10px 12px;font-size:15px}
+  .sheet textarea{resize:vertical;min-height:56px}
+  .photoPrev{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--panel2);display:none}
+  .btns{display:flex;gap:8px;margin-top:18px}
+  .btns button{flex:1;border-radius:10px;padding:12px;font-size:15px;font-weight:700;cursor:pointer;border:1px solid var(--line)}
+  .primary{background:var(--accent);color:#111;border-color:var(--accent)!important}
+  .ghost{background:transparent;color:var(--text)}
+  .danger{background:transparent;color:var(--danger);border-color:var(--danger)!important}
+  .detailImg{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:var(--panel2)}
+  .kv{font-size:14px;line-height:1.9}
+  .kv span{color:var(--sub);display:inline-block;min-width:5.5em}
+  .toolbar{display:flex;gap:8px;padding:0 16px}
+  .toolbar button{flex:1;background:var(--panel);color:var(--sub);border:1px solid var(--line);border-radius:10px;padding:8px;font-size:12px;cursor:pointer}
+  footer{color:var(--sub);font-size:11px;text-align:center;padding:20px 16px 0;line-height:1.7}
+</style>
+</head>
+<body>
+<header>
+  <h1>CLOSET COLLECTION<small>洋服コレクション管理</small></h1>
+  <div class="stats">
+    <div><b id="statCount">0</b> アイテム</div>
+    <div class="gold">合計 <b id="statTotal">¥0</b></div>
+    <div>売る候補 <b id="statSell">0</b></div>
+  </div>
+</header>
+
+<div class="controls">
+  <input type="search" id="q" placeholder="ブランド・アイテム名・カラーで検索">
+  <div class="row">
+    <select id="fCategory"><option value="">カテゴリ：すべて</option></select>
+    <select id="fBrand"><option value="">ブランド：すべて</option></select>
+  </div>
+  <label class="checkline"><input type="checkbox" id="fSell"> 売る候補だけ表示</label>
+</div>
+
+<div class="toolbar">
+  <button id="exportBtn">データを書き出す（バックアップ）</button>
+  <button id="importBtn">データを読み込む</button>
+  <input type="file" id="importFile" accept="application/json" hidden>
+</div>
+
+<main>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="emptyMsg">まだアイテムがありません。<br>右下の「＋ 追加」から最初の1着を登録してみてください。</div>
+</main>
+
+<footer>
+  データはこの端末のブラウザ内に保存されます。サーバーには送信されません。<br>
+  機種変更やブラウザのデータ消去に備えて、たまに「書き出す」でバックアップを。
+</footer>
+
+<button id="addBtn">＋ 追加</button>
+
+<dialog id="editDialog">
+  <form method="dialog" class="sheet" id="editForm">
+    <h2 id="editTitle">アイテムを追加</h2>
+    <img class="photoPrev" id="photoPrev" alt="">
+    <label>写真</label>
+    <input type="file" id="fPhoto" accept="image/*">
+    <label>ブランド *</label>
+    <input id="fBrandName" placeholder="例：Needles / Rick Owens / Acne Studios" required>
+    <label>アイテム名 *</label>
+    <input id="fName" placeholder="例：トラックパンツ" required>
+    <label>カテゴリ</label>
+    <select id="fCat">
+      <option>トップス</option><option>ボトムス</option><option>アウター</option>
+      <option>シューズ</option><option>バッグ</option><option>アクセサリー</option><option>その他</option>
+    </select>
+    <div class="row">
+      <div><label>サイズ</label><input id="fSize" placeholder="M / 28 / 42"></div>
+      <div><label>カラー</label><input id="fColor" placeholder="ブラック"></div>
+    </div>
+    <div class="row">
+      <div><label>購入価格（円）</label><input id="fPrice" type="number" min="0" inputmode="numeric" placeholder="12000"></div>
+      <div><label>購入日</label><input id="fDate" type="date"></div>
+    </div>
+    <label>購入場所</label>
+    <input id="fPlace" placeholder="例：セカンドストリート小牧西店">
+    <label>メモ</label>
+    <textarea id="fMemo" placeholder="状態、合わせ方、買った経緯など"></textarea>
+    <label class="checkline" style="margin-top:12px"><input type="checkbox" id="fSellFlag"> 売る候補にする</label>
+    <div class="btns">
+      <button type="button" class="ghost" id="cancelEdit">キャンセル</button>
+      <button type="submit" class="primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="detailDialog">
+  <div class="sheet">
+    <img class="detailImg" id="dImg" alt="">
+    <h2 style="margin-top:14px"><span id="dBrand" style="color:var(--accent);font-size:13px;letter-spacing:.06em"></span><br><span id="dName"></span></h2>
+    <div class="kv" id="dKv"></div>
+    <div class="btns">
+      <button class="ghost" id="closeDetail">閉じる</button>
+      <button class="primary" id="editDetail" style="flex:1">編集</button>
+      <button class="danger" id="deleteDetail" style="flex:1">削除</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+'use strict';
+/* Closet Collection — public PWA v1
+   Data model: items in IndexedDB (db: closet-collection, store: items)
+   Item: { id, brand, name, category, size, color, price, date, place, memo, sell, photo(dataURL jpeg), createdAt }
+*/
+const DB_NAME = 'closet-collection';
+const STORE = 'items';
+let db = null;
+let items = [];
+let editingId = null;
+let detailId = null;
+let pendingPhoto = null;
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(STORE, { keyPath: 'id' });
+    };
+    req.onsuccess = () => { db = req.result; resolve(); };
+    req.onerror = () => reject(req.error);
+  });
+}
+function tx(mode) { return db.transaction(STORE, mode).objectStore(STORE); }
+function getAll() {
+  return new Promise((resolve, reject) => {
+    const out = [];
+    const req = tx('readonly').openCursor();
+    req.onsuccess = () => {
+      const cur = req.result;
+      if (cur) { out.push(cur.value); cur.continue(); } else resolve(out);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+function putItem(item) {
+  return new Promise((resolve, reject) => {
+    const req = tx('readwrite').put(item);
+    req.onsuccess = resolve; req.onerror = () => reject(req.error);
+  });
+}
+function deleteItem(id) {
+  return new Promise((resolve, reject) => {
+    const req = tx('readwrite').delete(id);
+    req.onsuccess = resolve; req.onerror = () => reject(req.error);
+  });
+}
+
+const $ = (id) => document.getElementById(id);
+const yen = (n) => '¥' + Number(n || 0).toLocaleString('ja-JP');
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1200;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function currentFilter() {
+  return {
+    q: $('q').value.trim().toLowerCase(),
+    cat: $('fCategory').value,
+    brand: $('fBrand').value,
+    sellOnly: $('fSell').checked,
+  };
+}
+
+function render() {
+  const f = currentFilter();
+  const list = items.filter((it) => {
+    if (f.cat && it.category !== f.cat) return false;
+    if (f.brand && it.brand !== f.brand) return false;
+    if (f.sellOnly && !it.sell) return false;
+    if (f.q) {
+      const hay = [it.brand, it.name, it.color, it.place, it.memo].join(' ').toLowerCase();
+      if (!hay.includes(f.q)) return false;
+    }
+    return true;
+  });
+  list.sort((a, b) => b.createdAt - a.createdAt);
+
+  $('statCount').textContent = items.length;
+  $('statTotal').textContent = yen(items.reduce((s, it) => s + (Number(it.price) || 0), 0));
+  $('statSell').textContent = items.filter((it) => it.sell).length;
+
+  const grid = $('grid');
+  grid.innerHTML = list.map((it) => `
+    <button class="card" data-id="${it.id}">
+      ${it.photo ? `<img src="${it.photo}" alt="">` : `<img alt="">`}
+      <span class="meta" style="display:block">
+        <span class="brand">${esc(it.brand)}</span>
+        <span class="name" style="display:block">${esc(it.name)}</span>
+        <span class="price">${it.price ? yen(it.price) : ''}${it.size ? ' / ' + esc(it.size) : ''}</span>
+        ${it.sell ? '<span class="badge">売る候補</span>' : ''}
+      </span>
+    </button>`).join('');
+  $('emptyMsg').style.display = list.length ? 'none' : 'block';
+  grid.querySelectorAll('.card').forEach((el) => el.addEventListener('click', () => openDetail(el.dataset.id)));
+
+  const cats = [...new Set(items.map((it) => it.category).filter(Boolean))];
+  const brands = [...new Set(items.map((it) => it.brand).filter(Boolean))].sort();
+  const catSel = $('fCategory'); const curCat = catSel.value;
+  catSel.innerHTML = '<option value="">カテゴリ：すべて</option>' + cats.map((c) => `<option ${c===curCat?'selected':''}>${esc(c)}</option>`).join('');
+  const brandSel = $('fBrand'); const curBrand = brandSel.value;
+  brandSel.innerHTML = '<option value="">ブランド：すべて</option>' + brands.map((b) => `<option ${b===curBrand?'selected':''}>${esc(b)}</option>`).join('');
+}
+
+function openEdit(item) {
+  editingId = item ? item.id : null;
+  pendingPhoto = item ? (item.photo || null) : null;
+  $('editTitle').textContent = item ? 'アイテムを編集' : 'アイテムを追加';
+  $('fBrandName').value = item?.brand || '';
+  $('fName').value = item?.name || '';
+  $('fCat').value = item?.category || 'トップス';
+  $('fSize').value = item?.size || '';
+  $('fColor').value = item?.color || '';
+  $('fPrice').value = item?.price ?? '';
+  $('fDate').value = item?.date || '';
+  $('fPlace').value = item?.place || '';
+  $('fMemo').value = item?.memo || '';
+  $('fSellFlag').checked = !!item?.sell;
+  $('fPhoto').value = '';
+  const prev = $('photoPrev');
+  if (pendingPhoto) { prev.src = pendingPhoto; prev.style.display = 'block'; } else { prev.style.display = 'none'; }
+  $('editDialog').showModal();
+}
+
+function openDetail(id) {
+  const it = items.find((x) => x.id === id);
+  if (!it) return;
+  detailId = id;
+  $('dImg').src = it.photo || '';
+  $('dImg').style.display = it.photo ? 'block' : 'none';
+  $('dBrand').textContent = it.brand || '';
+  $('dName').textContent = it.name || '';
+  const rows = [
+    ['カテゴリ', it.category], ['サイズ', it.size], ['カラー', it.color],
+    ['購入価格', it.price ? yen(it.price) : ''], ['購入日', it.date],
+    ['購入場所', it.place], ['メモ', it.memo],
+    ['売る候補', it.sell ? 'はい' : ''],
+  ].filter(([, v]) => v);
+  $('dKv').innerHTML = rows.map(([k, v]) => `<div><span>${k}</span>${esc(v)}</div>`).join('');
+  $('detailDialog').showModal();
+}
+
+async function saveFromForm(ev) {
+  ev.preventDefault();
+  const brand = $('fBrandName').value.trim();
+  const name = $('fName').value.trim();
+  if (!brand || !name) return;
+  const old = editingId ? items.find((x) => x.id === editingId) : null;
+  const item = {
+    id: editingId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 8)),
+    brand, name,
+    category: $('fCat').value,
+    size: $('fSize').value.trim(),
+    color: $('fColor').value.trim(),
+    price: Number($('fPrice').value) || 0,
+    date: $('fDate').value,
+    place: $('fPlace').value.trim(),
+    memo: $('fMemo').value.trim(),
+    sell: $('fSellFlag').checked,
+    photo: pendingPhoto,
+    createdAt: old ? old.createdAt : Date.now(),
+  };
+  await putItem(item);
+  items = await getAll();
+  $('editDialog').close();
+  render();
+}
+
+async function init() {
+  await openDb();
+  items = await getAll();
+  render();
+
+  $('addBtn').addEventListener('click', () => openEdit(null));
+  $('cancelEdit').addEventListener('click', () => $('editDialog').close());
+  $('editForm').addEventListener('submit', saveFromForm);
+  $('fPhoto').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    pendingPhoto = await compressImage(file);
+    const prev = $('photoPrev');
+    prev.src = pendingPhoto; prev.style.display = 'block';
+  });
+  ['q', 'fCategory', 'fBrand', 'fSell'].forEach((id) => {
+    $(id).addEventListener('input', render);
+    $(id).addEventListener('change', render);
+  });
+  $('closeDetail').addEventListener('click', () => $('detailDialog').close());
+  $('editDetail').addEventListener('click', () => {
+    const it = items.find((x) => x.id === detailId);
+    $('detailDialog').close();
+    openEdit(it);
+  });
+  $('deleteDetail').addEventListener('click', async () => {
+    if (!confirm('このアイテムを削除しますか？')) return;
+    await deleteItem(detailId);
+    items = await getAll();
+    $('detailDialog').close();
+    render();
+  });
+  $('exportBtn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify({ app: 'closet-collection', version: 1, items }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'closet-collection-backup.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  $('importBtn').addEventListener('click', () => $('importFile').click());
+  $('importFile').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!Array.isArray(data.items)) throw new Error('bad format');
+      for (const it of data.items) await putItem(it);
+      items = await getAll();
+      render();
+      alert('読み込みました');
+    } catch { alert('読み込みに失敗しました。バックアップファイルを選んでください。'); }
+    e.target.value = '';
+  });
+}
+
+init();
