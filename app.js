@@ -1,7 +1,7 @@
 'use strict';
 /* Closet Collection — public PWA v1
    Data model: items in IndexedDB (db: closet-collection, store: items)
-   Item: { id, brand, name, category, size, color, price, date, place, memo, sell, photo(dataURL jpeg), createdAt }
+   Item: { id, brand, name, category, size, color, price, date, place, memo, sell, photo(dataURL jpeg), createdAt, market, marketDate }
 */
 const DB_NAME = 'closet-collection';
 const STORE = 'items';
@@ -95,6 +95,12 @@ function render() {
   $('statCount').textContent = items.length;
   $('statTotal').textContent = yen(items.reduce((s, it) => s + (Number(it.price) || 0), 0));
   $('statSell').textContent = items.filter((it) => it.sell).length;
+  const withMarket = items.filter((it) => Number(it.market) > 0);
+  $('statMarket').textContent = yen(withMarket.reduce((s, it) => s + Number(it.market), 0));
+  const diff = withMarket.reduce((s, it) => s + (Number(it.market) - (Number(it.price) || 0)), 0);
+  const diffEl = $('statDiff');
+  diffEl.textContent = (diff >= 0 ? '+' : '−') + yen(Math.abs(diff));
+  diffEl.className = diff >= 0 ? 'pos' : 'neg';
 
   const grid = $('grid');
   grid.innerHTML = list.map((it) => `
@@ -104,6 +110,7 @@ function render() {
         <span class="brand">${esc(it.brand)}</span>
         <span class="name" style="display:block">${esc(it.name)}</span>
         <span class="price">${it.price ? yen(it.price) : ''}${it.size ? ' / ' + esc(it.size) : ''}</span>
+        ${Number(it.market) > 0 ? `<span class="market" style="display:block">相場 ${yen(it.market)} <span class="${(Number(it.market) - (Number(it.price) || 0)) >= 0 ? 'pos' : 'neg'}">${(Number(it.market) - (Number(it.price) || 0)) >= 0 ? '+' : '−'}${yen(Math.abs(Number(it.market) - (Number(it.price) || 0)))}</span></span>` : ''}
         ${it.sell ? '<span class="badge">売る候補</span>' : ''}
       </span>
     </button>`).join('');
@@ -129,6 +136,8 @@ function openEdit(item) {
   $('fColor').value = item?.color || '';
   $('fPrice').value = item?.price ?? '';
   $('fDate').value = item?.date || '';
+  $('fMarket').value = item?.market ?? '';
+  $('fMarketDate').value = item?.marketDate || '';
   $('fPlace').value = item?.place || '';
   $('fMemo').value = item?.memo || '';
   $('fSellFlag').checked = !!item?.sell;
@@ -150,9 +159,15 @@ function openDetail(id) {
     ['カテゴリ', it.category], ['サイズ', it.size], ['カラー', it.color],
     ['購入価格', it.price ? yen(it.price) : ''], ['購入日', it.date],
     ['購入場所', it.place], ['メモ', it.memo],
+    ['中古相場', Number(it.market) > 0 ? yen(it.market) : ''],
+    ['相場確認日', it.marketDate || ''],
+    ['損益', Number(it.market) > 0 ? ((Number(it.market) - (Number(it.price) || 0)) >= 0 ? '+' : '−') + yen(Math.abs(Number(it.market) - (Number(it.price) || 0))) : ''],
     ['売る候補', it.sell ? 'はい' : ''],
   ].filter(([, v]) => v);
   $('dKv').innerHTML = rows.map(([k, v]) => `<div><span>${k}</span>${esc(v)}</div>`).join('');
+  const q = encodeURIComponent([it.brand, it.name].filter(Boolean).join(' '));
+  $('dMercari').href = 'https://jp.mercari.com/search?keyword=' + q + '&status=sold_out';
+  $('dSnkrdunk').href = 'https://snkrdunk.com/search?keywords=' + q;
   $('detailDialog').showModal();
 }
 
@@ -170,6 +185,8 @@ async function saveFromForm(ev) {
     color: $('fColor').value.trim(),
     price: Number($('fPrice').value) || 0,
     date: $('fDate').value,
+    market: Number($('fMarket').value) || 0,
+    marketDate: $('fMarketDate').value,
     place: $('fPlace').value.trim(),
     memo: $('fMemo').value.trim(),
     sell: $('fSellFlag').checked,

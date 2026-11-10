@@ -39,7 +39,13 @@
   header{position:sticky;top:0;z-index:20;background:rgba(15,15,16,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:14px 16px 10px}
   h1{font-size:19px;margin:0;letter-spacing:.04em}
   h1 small{display:block;font-size:11px;color:var(--sub);font-weight:400;margin-top:2px;letter-spacing:.08em}
-  .stats{display:flex;gap:16px;margin-top:10px;font-size:13px;color:var(--sub)}
+  .stats{display:flex;gap:16px;margin-top:10px;font-size:13px;color:var(--sub);flex-wrap:wrap;row-gap:4px}
+  .pos{color:#4caf7d}.neg{color:var(--danger)}
+  .stats b.pos{color:#4caf7d}.stats b.neg{color:var(--danger)}
+  .card .market{font-size:12px;color:var(--sub);margin-top:2px}
+  .sourcelinks{display:flex;gap:8px;margin-top:14px}
+  .sourcelinks a{flex:1;text-align:center;background:var(--panel2);color:var(--accent);border:1px solid var(--line);border-radius:10px;padding:10px 6px;font-size:13px;font-weight:700;text-decoration:none}
+  .hint{font-size:11px;color:var(--sub);margin-top:6px;line-height:1.6}
   .stats b{color:var(--text);font-size:16px}
   .stats .gold b{color:var(--accent)}
   .controls{padding:12px 16px 4px;display:flex;flex-direction:column;gap:8px}
@@ -90,8 +96,10 @@
   <h1>CLOSET COLLECTION<small>洋服コレクション管理</small></h1>
   <div class="stats">
     <div><b id="statCount">0</b> アイテム</div>
-    <div class="gold">合計 <b id="statTotal">¥0</b></div>
+    <div class="gold">購入合計 <b id="statTotal">¥0</b></div>
     <div>売る候補 <b id="statSell">0</b></div>
+    <div class="gold">相場合計 <b id="statMarket">¥0</b></div>
+    <div>損益 <b id="statDiff">¥0</b></div>
   </div>
 </header>
 
@@ -145,6 +153,11 @@
       <div><label>購入価格（円）</label><input id="fPrice" type="number" min="0" inputmode="numeric" placeholder="12000"></div>
       <div><label>購入日</label><input id="fDate" type="date"></div>
     </div>
+    <div class="row">
+      <div><label>中古相場（円）</label><input id="fMarket" type="number" min="0" inputmode="numeric" placeholder="9000"></div>
+      <div><label>相場確認日</label><input id="fMarketDate" type="date"></div>
+    </div>
+    <div class="hint">相場はアイテム詳細の「相場を調べる」から、メルカリの売り切れ価格やスニダンの価格を見て入力してください。</div>
     <label>購入場所</label>
     <input id="fPlace" placeholder="例：セカンドストリート小牧西店">
     <label>メモ</label>
@@ -162,6 +175,10 @@
     <img class="detailImg" id="dImg" alt="">
     <h2 style="margin-top:14px"><span id="dBrand" style="color:var(--accent);font-size:13px;letter-spacing:.06em"></span><br><span id="dName"></span></h2>
     <div class="kv" id="dKv"></div>
+    <div class="sourcelinks">
+      <a id="dMercari" target="_blank" rel="noopener">メルカリで売れた相場を見る</a>
+      <a id="dSnkrdunk" target="_blank" rel="noopener">スニダンで相場を見る</a>
+    </div>
     <div class="btns">
       <button class="ghost" id="closeDetail">閉じる</button>
       <button class="primary" id="editDetail" style="flex:1">編集</button>
