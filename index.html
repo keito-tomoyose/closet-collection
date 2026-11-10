@@ -140,11 +140,12 @@
     <input id="fBrandName" placeholder="例：Needles / Rick Owens / Acne Studios" required>
     <label>アイテム名 *</label>
     <input id="fName" placeholder="例：トラックパンツ" required>
-    <label>カテゴリ</label>
-    <select id="fCat">
-      <option>トップス</option><option>ボトムス</option><option>アウター</option>
-      <option>シューズ</option><option>バッグ</option><option>アクセサリー</option><option>その他</option>
-    </select>
+    <label>カテゴリ（大分類）</label>
+    <select id="fCat"></select>
+    <div class="row">
+      <div><label>中分類</label><select id="fCatSub"></select></div>
+      <div><label>小分類</label><select id="fCatDetail"></select></div>
+    </div>
     <div class="row">
       <div><label>サイズ</label><input id="fSize" placeholder="M / 28 / 42"></div>
       <div><label>カラー</label><input id="fColor" placeholder="ブラック"></div>

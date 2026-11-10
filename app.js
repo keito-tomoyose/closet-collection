@@ -1,8 +1,63 @@
 'use strict';
 /* Closet Collection — public PWA v1
    Data model: items in IndexedDB (db: closet-collection, store: items)
-   Item: { id, brand, name, category, size, color, price, date, place, memo, sell, photo(dataURL jpeg), createdAt, market, marketDate }
+   Item: { id, brand, name, category（大分類）, categorySub（中分類）, categoryDetail（小分類）, size, color, price, date, place, memo, sell, photo(dataURL jpeg), createdAt, market, marketDate }
+   旧データ（categoryのみ）はそのまま大分類として扱う（移行不要）。
 */
+
+/* カテゴリ分類: 大分類 → 中分類 → 小分類 */
+const TAXONOMY = {
+  'トップス': {
+    'Tシャツ・カットソー': ['半袖', '長袖', 'ノースリーブ'],
+    'シャツ': ['半袖', '長袖'],
+    'ニット・セーター': [],
+    'スウェット': ['パーカー', 'トレーナー', 'ジップアップ'],
+    'タンクトップ': [],
+    'その他': [],
+  },
+  'アウター': {
+    'ジャケット': ['デニムジャケット', 'レザージャケット', 'ブルゾン', 'テーラードジャケット', 'その他'],
+    'コート': ['チェスターコート', 'トレンチコート', 'ステンカラーコート', 'モッズコート', 'その他'],
+    'ダウン': ['ダウンジャケット', 'ダウンベスト'],
+    'ベスト': [],
+    'その他': [],
+  },
+  'ボトムス': {
+    'パンツ': ['デニム', 'カーゴパンツ', 'スラックス', 'チノパン', 'スウェットパンツ', 'トラックパンツ', 'その他'],
+    'ショートパンツ': [],
+    'スカート': [],
+    'その他': [],
+  },
+  'シューズ': {
+    'スニーカー': ['ローカット', 'ハイカット'],
+    'ブーツ': [],
+    '革靴': [],
+    'サンダル': [],
+    'その他': [],
+  },
+  'バッグ': {
+    'ショルダーバッグ': [],
+    'トートバッグ': [],
+    'リュック': [],
+    'ハンドバッグ': [],
+    'ウエストバッグ': [],
+    'その他': [],
+  },
+  'アクセサリー': {
+    '帽子': ['キャップ', 'ハット', 'ニット帽', 'その他'],
+    'ネックレス': [],
+    'ブレスレット': [],
+    'リング': [],
+    'ピアス': [],
+    'ベルト': [],
+    'サングラス・メガネ': [],
+    'マフラー・ストール': [],
+    '手袋': [],
+    '時計': [],
+    'その他': [],
+  },
+  'その他': { 'その他': [] },
+};
 const DB_NAME = 'closet-collection';
 const STORE = 'items';
 let db = null;
@@ -50,6 +105,29 @@ const $ = (id) => document.getElementById(id);
 const yen = (n) => '¥' + Number(n || 0).toLocaleString('ja-JP');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+function catPath(it) {
+  return [it.category, it.categorySub, it.categoryDetail].filter(Boolean).join(' ＞ ');
+}
+
+function setOptions(sel, values, current, emptyLabel) {
+  const vals = [...values];
+  if (current && !vals.includes(current)) vals.push(current);
+  sel.innerHTML = (emptyLabel != null ? `<option value="">${emptyLabel}</option>` : '') +
+    vals.map((v) => `<option value="${esc(v)}"${v === current ? ' selected' : ''}>${esc(v)}</option>`).join('');
+  sel.value = current || '';
+}
+
+/* 編集フォームのカテゴリ3段セレクトを、大→中→小の順に連動して埋める */
+function fillCatForm(l, m, s) {
+  const catSel = $('fCat'), subSel = $('fCatSub'), detSel = $('fCatDetail');
+  setOptions(catSel, Object.keys(TAXONOMY), l || 'トップス', null);
+  const subs = Object.keys(TAXONOMY[catSel.value] || {});
+  setOptions(subSel, subs, m || '', '指定なし');
+  const dets = (TAXONOMY[catSel.value] || {})[subSel.value] || [];
+  setOptions(detSel, dets, s || '', '指定なし');
+  detSel.disabled = dets.length === 0 && !s;
+}
+
 function compressImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -85,7 +163,7 @@ function render() {
     if (f.brand && it.brand !== f.brand) return false;
     if (f.sellOnly && !it.sell) return false;
     if (f.q) {
-      const hay = [it.brand, it.name, it.color, it.place, it.memo].join(' ').toLowerCase();
+      const hay = [it.brand, it.name, it.color, it.place, it.memo, it.category, it.categorySub, it.categoryDetail].join(' ').toLowerCase();
       if (!hay.includes(f.q)) return false;
     }
     return true;
@@ -117,7 +195,9 @@ function render() {
   $('emptyMsg').style.display = list.length ? 'none' : 'block';
   grid.querySelectorAll('.card').forEach((el) => el.addEventListener('click', () => openDetail(el.dataset.id)));
 
-  const cats = [...new Set(items.map((it) => it.category).filter(Boolean))];
+  const presentCats = [...new Set(items.map((it) => it.category).filter(Boolean))];
+  const cats = [...Object.keys(TAXONOMY).filter((c) => presentCats.includes(c)),
+    ...presentCats.filter((c) => !Object.prototype.hasOwnProperty.call(TAXONOMY, c))];
   const brands = [...new Set(items.map((it) => it.brand).filter(Boolean))].sort();
   const catSel = $('fCategory'); const curCat = catSel.value;
   catSel.innerHTML = '<option value="">カテゴリ：すべて</option>' + cats.map((c) => `<option ${c===curCat?'selected':''}>${esc(c)}</option>`).join('');
@@ -131,7 +211,7 @@ function openEdit(item) {
   $('editTitle').textContent = item ? 'アイテムを編集' : 'アイテムを追加';
   $('fBrandName').value = item?.brand || '';
   $('fName').value = item?.name || '';
-  $('fCat').value = item?.category || 'トップス';
+  fillCatForm(item?.category || 'トップス', item?.categorySub || '', item?.categoryDetail || '');
   $('fSize').value = item?.size || '';
   $('fColor').value = item?.color || '';
   $('fPrice').value = item?.price ?? '';
@@ -156,7 +236,7 @@ function openDetail(id) {
   $('dBrand').textContent = it.brand || '';
   $('dName').textContent = it.name || '';
   const rows = [
-    ['カテゴリ', it.category], ['サイズ', it.size], ['カラー', it.color],
+    ['カテゴリ', catPath(it)], ['サイズ', it.size], ['カラー', it.color],
     ['購入価格', it.price ? yen(it.price) : ''], ['購入日', it.date],
     ['購入場所', it.place], ['メモ', it.memo],
     ['中古相場', Number(it.market) > 0 ? yen(it.market) : ''],
@@ -181,6 +261,8 @@ async function saveFromForm(ev) {
     id: editingId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 8)),
     brand, name,
     category: $('fCat').value,
+    categorySub: $('fCatSub').value,
+    categoryDetail: $('fCatDetail').value,
     size: $('fSize').value.trim(),
     color: $('fColor').value.trim(),
     price: Number($('fPrice').value) || 0,
@@ -207,6 +289,8 @@ async function init() {
   $('addBtn').addEventListener('click', () => openEdit(null));
   $('cancelEdit').addEventListener('click', () => $('editDialog').close());
   $('editForm').addEventListener('submit', saveFromForm);
+  $('fCat').addEventListener('change', () => fillCatForm($('fCat').value, '', ''));
+  $('fCatSub').addEventListener('change', () => fillCatForm($('fCat').value, $('fCatSub').value, ''));
   $('fPhoto').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
